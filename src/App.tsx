@@ -90,11 +90,10 @@ const App: React.FC = () => {
     setInput, 
     input 
   };
-
   return (
     <DragDropContext onDragEnd={onDragEnd}>
-      <div className="min-h-screen bg-slate-50 p-4 text-slate-800 font-sans">
-        <header className="flex justify-between items-center mb-6 max-w-6xl mx-auto">
+      <div className="w-full min-h-screen bg-slate-50 p-4 text-slate-800 font-sans">
+        <header className="flex justify-between items-center mb-6 w-full mx-auto">
           <h1 className="text-2xl font-bold text-primary">本日の予定</h1>
           <div className="badge badge-outline border-slate-400 text-slate-600 font-medium">
             {new Date().toLocaleDateString()}
@@ -102,7 +101,7 @@ const App: React.FC = () => {
         </header>
 
         {/* 入力フォーム */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-8 flex flex-wrap gap-4 items-end justify-center max-w-6xl mx-auto text-slate-700">
+        <div className="max-w-6xl bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-8 flex flex-wrap gap-4 items-end justify-center mx-auto text-slate-700">
           <div className="form-control">
             <label className="label text-xs font-bold">予定・案件名</label>
             <input 
@@ -131,6 +130,7 @@ const App: React.FC = () => {
         </div>
 
         {/* 切り替え表示 */}
+        <span className="font-bold text-slate-600 px-2 text-xs">ダブルクリック（タップ）でタスク削除</span>
         <main>
           {isMobile ? <MobileView {...commonProps} /> : <DesktopView {...commonProps} />}
         </main>

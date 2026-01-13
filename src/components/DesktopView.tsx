@@ -4,7 +4,7 @@ import TaskCard from './TaskCard';
 
 function DesktopView({ members, hours, tasks, deleteTask, setInput, input }) {
   return (
-    <div className="overflow-x-auto bg-white rounded-xl shadow-md border border-slate-200 max-w-6xl mx-auto">
+    <div className="overflow-x-auto bg-white rounded-xl shadow-md border border-slate-200 w-full mx-auto">
       <table className="table table-pin-rows table-pin-cols w-full border-collapse">
         <thead>
           <tr className="bg-slate-50 text-slate-600 border-b border-slate-200">
