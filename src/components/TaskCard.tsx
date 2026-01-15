@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { Draggable } from '@hello-pangea/dnd';
 
 // 1. Taskそのものの形を定義
@@ -6,7 +6,9 @@ interface Task {
   id: number;
   title: string;
   member: string;
-  time: string;
+  start_time: string,
+  end_time: string,
+  date: string,
   priority?: 'high' | 'low'; // ? は「あってもなくても良い」という意味
 }
 

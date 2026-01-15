@@ -6,9 +6,11 @@ function MobileView({ hours, tasks, deleteTask, setInput, input }) {
   return (
     <div className="max-w-md mx-auto space-y-6 pb-20">
       {hours.map((time) => {
-        const cellTasks = tasks.filter((t) => t.time === time);
         const droppableId = `mobile-${time}`;
-
+        const cellTasks = tasks.filter(t => {
+          const formattedDBTime = t.start_time?.substring(0, 5);
+          return formattedDBTime === time;
+        });
         return (
           <div key={time} className="flex gap-3">
             <div className="w-12 pt-2 text-sm font-bold text-slate-500">{time}</div>
@@ -29,7 +31,8 @@ function MobileView({ hours, tasks, deleteTask, setInput, input }) {
                       </div>
                     ))}
                     {cellTasks.length === 0 && (
-                      <button className="w-full h-10 text-slate-300 text-xs flex items-center justify-center" onClick={() => setInput({ ...input, time, member: "未定" })}> + 追加 </button>
+                      <button className="w-full h-10 text-slate-300 text-xs flex items-center justify-center" onClick={() => setInput({ ...input, startTime: time })}
+                      > + 追加 </button>
                     )}
                     {provided.placeholder}
                   </div>
