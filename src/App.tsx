@@ -8,6 +8,9 @@ import { supabase } from './supabaseClient';
 
 // --- 型の定義（宣言文）------------------------------------------------
 
+/* // SlackのWebhook URL
+const SLACK_WEBHOOK_URL = import.meta.env.VITE_SLACK_WEBHOOK_URL; */
+
 //タスク
 export interface Task {
   id: number;
@@ -34,6 +37,19 @@ const App: React.FC = () => {
   const members: string[] = ["田中", "佐藤", "鈴木", "高橋"];
   const hours: string[] = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"];
 
+  /*   // Slack通知を送る関数
+    const sendSlackNotification = async (taskTitle: string) => {
+      if (!SLACK_WEBHOOK_URL) return;
+      await fetch(SLACK_WEBHOOK_URL, {
+        method: 'POST',
+        mode: 'no-cors', // ブラウザからの直接送信に必要
+        body: JSON.stringify({ text: `🚀 *新しいタスクが追加されました！*\n内容: ${taskTitle}` }),
+      });
+    }; */
+
+  // 初期値は今日の日付（YYYY-MM-DD形式）
+  const [selectedDate, setSelectedDate] = useState<string>(new Date().toLocaleDateString('sv-SE'));
+
   //　通知の許可
   const requestNotificationPermission = async () => {
     const permission = await Notification.requestPermission();
@@ -44,19 +60,23 @@ const App: React.FC = () => {
 
   // --- Stateの定義（型を指定） ---
   const [tasks, setTasks] = useState<Task[]>([]);
-  
-//==================================================================
-//　DBからデータ取得
-//==================================================================
+
+  //　フィルター用選択メンバー
+  const [selectedMember, setSelectedMember] = useState<string>("全員");
+
+  //==================================================================
+  //　DBからデータ取得
+  //==================================================================
   const fetchTasks = async () => {
     try {
       const { data, error } = await supabase
         .from('tasks')
         .select('id,created_at,title,member,start_time,end_time,priority')
+        .eq('date', selectedDate)
         .order('id', { ascending: true });
 
       if (error) {
-        console.error('★Supabaseからエラーが返った:', error);
+        console.error('★Supabaseからのエラー:', error);
       } else {
         // ここで秒数をトリム(09:00:00 -> 09:00)しておく
         const formattedData = data.map(t => ({
@@ -67,231 +87,286 @@ const App: React.FC = () => {
         setTasks(formattedData as Task[]);
       }
     } catch (err) {
-      console.error('★通信自体が失敗した:', err);
+      console.error('★通信失敗:', err);
     }
   };
-//==================================================================
-// 副作用（起動時に実行）
-//==================================================================
+  //==================================================================
+  // 副作用（起動時に実行）
+  //==================================================================
   useEffect(() => {
     fetchTasks();
 
   // リアルタイム監視・リスナーの登録-------------------------------------
-    const channel = supabase
-      .channel('tasks-realtime') // 任意の名前
-      .on(
-        'postgres_changes',
-        {
-          event: '*', // 追加・更新・削除すべてを監視
-          schema: 'public',
-          table: 'tasks',
-        },
-        (payload) => {
-          console.log('DB変更を検知しました:', payload);
-          // 変更があったらデータを再取得する
-          fetchTasks(); 
+  const channel = supabase
+    .channel('tasks-realtime') // 任意の名前
+    .on(
+      'postgres_changes',
+      {
+        event: '*', // 追加・更新・削除すべてを監視
+        schema: 'public',
+        table: 'tasks',
+      },
+      (payload) => {
+        console.log('DB変更を検知しました:', payload);
+        // 変更があったらデータを再取得する
+        fetchTasks();
+
+        //バッジを表示
+        if ('setAppBadge' in navigator) {
+          (navigator as any).setAppBadge(1).catch(console.error);
         }
-      )
-      .subscribe();
+        //ブラウザ通知も出す
+        if (Notification.permission === 'granted') {
+          new Notification('予定が更新されました！', {
+            body: `予定が追加・変更・削除されました。`,
+            icon: '/icon-192'
+          });
+        }
 
-    // コンポーネントが消えるときに監視を解除（メモリリーク防止）
-    return () => {
-      supabase.removeChannel(channel);
-    };
+      }
+    )
+    .subscribe();
 
-  // バッジ処理（数字削除）----------------------------------------------
-  navigator.clearAppBadge();
-  }, []);
+  // コンポーネントが消えるときに監視を解除（メモリリーク防止）
+  return () => {
+    supabase.removeChannel(channel);
+  };
 
-  //　入力フォームの規定値設定--------------------------------------------
-  const [input, setInput] = useState<InputState>({
-    title: "",
-    member: "田中",
-    startTime: "09:00",
-    endTime: "11:00",
-    date: new Date().toLocaleDateString('sv-SE'),
-    priority: "low"
-  });
+  // アプリが起動したらバッジをクリア（数字削除）----------------------------------------------
+  if ('clearAppBadge' in navigator) {
+    (navigator as any).clearAppBadge().catch(console.error);
+  }
+  }, [selectedDate]);
 
-  // レスポンシブ設定----------------------------------------------------
-  const [isMobile, setIsMobile] = useState<boolean>(window.innerWidth < 768);
+//　入力フォームの規定値設定--------------------------------------------
+const [input, setInput] = useState<InputState>({
+  title: "",
+  member: "田中",
+  startTime: "09:00",
+  endTime: "11:00",
+  date: new Date().toLocaleDateString('sv-SE'),
+  priority: "low"
+});
 
-  // ウィンドウサイズ
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+// レスポンシブ設定----------------------------------------------------
+const [isMobile, setIsMobile] = useState<boolean>(window.innerWidth < 768);
+
+// ウィンドウサイズ
+useEffect(() => {
+  const handleResize = () => setIsMobile(window.innerWidth < 768);
+  window.addEventListener('resize', handleResize);
+  return () => window.removeEventListener('resize', handleResize);
+}, []);
 
 //==================================================================
 // ロジック（型安全な関数）
 //==================================================================
 
-  //タスクの追加---------------------------------------------------
-  const addTask = async () => {
-    if (!input.title) return;
-    const { data, error } = await supabase
-      .from('tasks')
-      .insert([
-        {
-          title: input.title,
-          member: input.member,
-          start_time: input.startTime,
-          end_time: input.endTime,
-          date: input.date,
-          priority: input.priority
-        }
-      ])
-      .select();
-
-    if (error) {
-      console.error("保存失敗:", error);
-    } else if (data) {
-
-      // 通知を飛ばす---------------------------------------------------
-      if (Notification.permission === 'granted') {
-        new Notification('予約完了！', {
-          body: `${input.member}さんの${input.title}を予約しました。`,
-          icon: '/icon-192'
-        });
+//タスクの追加---------------------------------------------------
+const addTask = async () => {
+  if (!input.title) return;
+  const { data, error } = await supabase
+    .from('tasks')
+    .insert([
+      {
+        title: input.title,
+        member: input.member,
+        start_time: input.startTime,
+        end_time: input.endTime,
+        date: input.date,
+        priority: input.priority
       }
-      // バッジつける---------------------------------------------------
-      if ('setAppBadge' in navigator) {
-        navigator.setAppBadge(tasks.length); // タスクの総数を表示
-      }
-      // 再取得して画面を更新
-      await fetchTasks();
-      setInput({ ...input, title: "" });
+    ])
+    .select();
+
+  if (error) {
+    console.error("保存失敗:", error);
+  } else if (data) {
+
+    // 通知を飛ばす---------------------------------------------------
+    if (Notification.permission === 'granted') {
+      new Notification('予約完了！', {
+        body: `${input.member}さんの${input.title}を予約しました。`,
+        icon: '/icon-192'
+      });
     }
-  };
+    // Slack通知を送る---------------------------------------------------
+    //await sendSlackNotification(input.title);
 
-  // タスクの削除---------------------------------------------------
-  const deleteTask = async (id: number, title: string) => {
-    if (window.confirm(`「${title}」を削除しますか？`)) {
-      const { error } = await supabase
-        .from('tasks')
-        .delete()
-        .eq('id', id); // 指定したIDの行を消す
+    // 再取得して画面を更新
+    await fetchTasks();
+    setInput({ ...input, title: "" });
+  }
+};
 
-      if (error) {
-        console.error("削除失敗:", error);
-      } else {
-        setTasks(tasks.filter(t => t.id !== id));
-      }
-    }
-  };
-  //ドラッグ&ドロップの処理---------------------------------------------
-  const onDragEnd = async (result: DropResult): Promise<void> => {
-    const { destination, draggableId } = result;
-    if (!destination) return;
-
-    const dId = destination.droppableId;
-    let newMember: string;
-    let newTime: string;
-
-    if (dId.startsWith('mobile-')) {
-      newTime = dId.replace('mobile-', '');
-      newMember = tasks.find(t => String(t.id) === draggableId)?.member || "未定";
-    } else {
-      [newMember, newTime] = dId.split('-');
-    }
-
-    setTasks(prev => prev.map(t =>
-      String(t.id) === draggableId ? { ...t, member: newMember, start_time: newTime } : t
-    ));
-    // 3. 【重要】Supabase のデータも更新する
+// タスクの削除---------------------------------------------------
+const deleteTask = async (id: number, title: string) => {
+  if (window.confirm(`「${title}」を削除しますか？`)) {
     const { error } = await supabase
       .from('tasks')
-      .update({
-        member: newMember,
-        start_time: newTime
-      })
-      .eq('id', draggableId); // ドラッグした要素のIDと一致する行を更新
+      .delete()
+      .eq('id', id); // 指定したIDの行を消す
 
     if (error) {
-      console.error('DB更新エラー:', error);
-      // 失敗した場合はデータを再取得して元に戻すとより親切です
-      fetchTasks();
+      console.error("削除失敗:", error);
+    } else {
+      setTasks(tasks.filter(t => t.id !== id));
     }
-  };
+  }
+};
+//ドラッグ&ドロップの処理---------------------------------------------
+const onDragEnd = async (result: DropResult): Promise<void> => {
+  const { destination, draggableId } = result;
+  if (!destination) return;
 
-  // 子コンポーネントに渡す共通の道具（Props）------------------------------
-  const commonProps = {
-    members,
-    hours,
-    tasks,
-    deleteTask,
-    setInput,
-    input
-  };
+  const dId = destination.droppableId;
+  let newMember: string;
+  let newTime: string;
+
+  if (dId.startsWith('mobile-')) {
+    newTime = dId.replace('mobile-', '');
+    newMember = tasks.find(t => String(t.id) === draggableId)?.member || "未定";
+  } else {
+    [newMember, newTime] = dId.split('-');
+  }
+
+  setTasks(prev => prev.map(t =>
+    String(t.id) === draggableId ? { ...t, member: newMember, start_time: newTime } : t
+  ));
+  // 3. 【重要】Supabase のデータも更新する
+  const { error } = await supabase
+    .from('tasks')
+    .update({
+      member: newMember,
+      start_time: newTime
+    })
+    .eq('id', draggableId); // ドラッグした要素のIDと一致する行を更新
+
+  if (error) {
+    console.error('DB更新エラー:', error);
+    // 失敗した場合はデータを再取得して元に戻すとより親切
+    fetchTasks();
+  }
+};
+
+//メンバーごとのタスク数をカウントする関数
+const getTaskCount = (memberName: string) => {
+  return tasks.filter(t => t.member === memberName).length;
+};
+// フィルター条件に基づいて表示するメンバーを決定
+const displayedMembers = selectedMember === "全員"
+  ? members
+  : members.filter(m => m === selectedMember);
+
+// 子コンポーネントに渡す共通の道具（Props）------------------------------
+const commonProps = {
+  members: displayedMembers,
+  hours,
+  tasks,
+  deleteTask,
+  setInput,
+  input
+};
 //==================================================================
 // 画面描画
 //==================================================================
-  return (
-    <DragDropContext onDragEnd={onDragEnd}>
-      <div className="w-full min-h-screen bg-slate-50 p-4 text-slate-800 font-sans">
-        <header className="flex justify-between items-center mb-6 w-full mx-auto">
-          <h1 className="text-2xl font-bold text-primary">本日の予定</h1>
-          <button onClick={requestNotificationPermission} className="btn btn-outline btn-sm mb-4">
-            🔔 通知を許可する
-          </button>
-          <div className="badge badge-outline border-slate-400 text-slate-600 font-medium">
-            {new Date().toLocaleDateString()}
-          </div>
-        </header>
+return (
+  <DragDropContext onDragEnd={onDragEnd}>
+    <div className="w-full min-h-screen bg-slate-50 p-4 text-slate-800 font-sans">
+      <header className="flex justify-between items-center mb-6 w-full mx-auto">
+        <h1 className="text-2xl font-bold text-primary">本日の予定</h1>
+        {/* 日付選択カレンダー */}
+        <input
+          type="date"
+          className="input input-bordered input-sm font-bold"
+          value={selectedDate}
+          onChange={(e) => setSelectedDate(e.target.value)}
+        />
+        <button onClick={requestNotificationPermission} className="btn btn-outline btn-sm mb-4">
+          🔔 通知を許可する
+        </button>
+      </header>
 
-        {/* 入力フォーム */}
-        <div className="max-w-6xl bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-8 flex flex-wrap gap-4 items-end justify-center mx-auto text-slate-700">
-          <div className="form-control">
-            <label className="label text-xs font-bold">予定・案件名</label>
-            <input
-              type="text"
-              className="input input-bordered input-sm bg-white"
-              value={input.title}
-              onChange={e => setInput({ ...input, title: e.target.value })}
-              placeholder="例：◯◯社打ち合わせ"
-            />
-          </div>
-          <div className="form-control">
-            <label className="label py-1"><span className="label-text font-bold text-slate-600">担当者</span></label>
-            <select className="select select-bordered select-sm bg-white border-slate-300" value={input.member}
-              onChange={e => setInput({ ...input, member: e.target.value })}>
-              {members.map(m => <option key={m}>{m}</option>)}
-            </select>
-          </div>
-          <div className="form-control">
-            <label className="label py-1"><span className="label-text font-bold text-slate-600">開始時間</span></label>
-            <select className="select select-bordered select-sm bg-white border-slate-300" value={input.startTime}
-              onChange={e => setInput({ ...input, startTime: e.target.value })}>
-              {hours.map(h => <option key={h}>{h}</option>)}
-            </select>
-          </div>
-          <div className="form-control">
-            <label className="label py-1"><span className="label-text font-bold text-slate-600">終了時間</span></label>
-            <select className="select select-bordered select-sm bg-white border-slate-300" value={input.endTime}
-              onChange={e => setInput({ ...input, endTime: e.target.value })}>
-              {hours.map(h => <option key={h}>{h}</option>)}
-            </select>
-          </div>
-          <div className="form-control">
-            <label className="label py-1"><span className="label-text font-bold text-slate-600">優先度</span></label>
-            <select className="select select-bordered select-sm bg-white border-slate-300" value={input.priority}
-              onChange={e => setInput({ ...input, priority: e.target.value as 'high' | 'low' })}>
-              <option value="low">低 (Low)</option>
-              <option value="high">高 (High)</option>
-            </select>
-          </div>
-          <button className="btn btn-primary btn-sm px-6" onClick={addTask}>予約・追加</button>
+      {/* 入力フォーム */}
+      <div className="max-w-6xl bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-8 flex flex-wrap gap-4 items-end justify-center mx-auto text-slate-700">
+        <div className="form-control">
+          <label className="label text-xs font-bold">予定・案件名</label>
+          <input
+            type="text"
+            className="input input-bordered input-sm bg-white"
+            value={input.title}
+            onChange={e => setInput({ ...input, title: e.target.value })}
+            placeholder="例：◯◯社打ち合わせ"
+          />
         </div>
-
-        {/* 切り替え表示 */}
-        <span className="font-bold text-slate-600 px-2 text-xs">ダブルクリック（タップ）でタスク削除</span>
-        <main>
-          {isMobile ? <MobileView {...commonProps} /> : <DesktopView {...commonProps} />}
-        </main>
+        <div className="form-control">
+          <label className="label py-1"><span className="label-text font-bold text-slate-600">担当者</span></label>
+          <select className="select select-bordered select-sm bg-white border-slate-300" value={input.member}
+            onChange={e => setInput({ ...input, member: e.target.value })}>
+            {members.map(m => <option key={m}>{m}</option>)}
+          </select>
+        </div>
+        <div className="form-control">
+          <label className="label py-1"><span className="label-text font-bold text-slate-600">開始時間</span></label>
+          <select className="select select-bordered select-sm bg-white border-slate-300" value={input.startTime}
+            onChange={e => setInput({ ...input, startTime: e.target.value })}>
+            {hours.map(h => <option key={h}>{h}</option>)}
+          </select>
+        </div>
+        <div className="form-control">
+          <label className="label py-1"><span className="label-text font-bold text-slate-600">終了時間</span></label>
+          <select className="select select-bordered select-sm bg-white border-slate-300" value={input.endTime}
+            onChange={e => setInput({ ...input, endTime: e.target.value })}>
+            {hours.map(h => <option key={h}>{h}</option>)}
+          </select>
+        </div>
+        <div className="form-control">
+          <label className="label py-1"><span className="label-text font-bold text-slate-600">優先度</span></label>
+          <select className="select select-bordered select-sm bg-white border-slate-300" value={input.priority}
+            onChange={e => setInput({ ...input, priority: e.target.value as 'high' | 'low' })}>
+            <option value="low">通常 (Low)</option>
+            <option value="high">至急 (High)</option>
+          </select>
+        </div>
+        <button className="btn btn-primary btn-sm px-6" onClick={addTask}>予約・追加</button>
       </div>
-    </DragDropContext>
-  );
+      {//==================================================================
+        // メンバー選択ボタン
+        //==================================================================
+      }
+      <div className="flex flex-wrap gap-2 justify-center mb-6 bg-white p-3 rounded-xl shadow-sm border border-slate-200 max-w-6xl mx-auto">
+        <button
+          onClick={() => setSelectedMember("全員")}
+          className={`btn btn-sm rounded-full px-6 ${selectedMember === "全員" ? "btn-primary" : "btn-ghost bg-slate-100"}`}
+        >
+          全員
+        </button>
+        {members.map(m => {
+          const count = getTaskCount(m); // ループの中で計算
+          return (
+            <button
+              key={m}
+              onClick={() => setSelectedMember(m)}
+              className={`btn btn-sm rounded-full px-6 ${selectedMember === m ? "btn-primary" : "btn-ghost bg-slate-100"}`}
+            >
+              {m}
+              {count > 0 && (
+                <div className={`badge badge-sm ml-2 ${selectedMember === m ? "badge-secondary text-white" : "bg-slate-300 border-none"}`}>
+                  {count}
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {/* 切り替え表示 */}
+      <span className="font-bold text-slate-600 px-2 text-xs">ダブルクリック（タップ）でタスク削除</span>
+      <main>
+        {isMobile ? <MobileView {...commonProps} members={displayedMembers} /> : <DesktopView {...commonProps} members={displayedMembers} />}
+      </main>
+    </div>
+  </DragDropContext>
+);
 };
 
 export default App;

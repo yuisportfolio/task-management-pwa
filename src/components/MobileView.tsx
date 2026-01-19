@@ -2,14 +2,14 @@
 import { Droppable } from '@hello-pangea/dnd';
 import TaskCard from './TaskCard';
 
-function MobileView({ hours, tasks, deleteTask, setInput, input }) {
+function MobileView({ members,hours, tasks, deleteTask, setInput, input }) {
   return (
     <div className="max-w-md mx-auto space-y-6 pb-20">
       {hours.map((time) => {
         const droppableId = `mobile-${time}`;
         const cellTasks = tasks.filter(t => {
           const formattedDBTime = t.start_time?.substring(0, 5);
-          return formattedDBTime === time;
+          return formattedDBTime === time && members.includes(t.member);
         });
         return (
           <div key={time} className="flex gap-3">
